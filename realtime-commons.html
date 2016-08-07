@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+    <meta name="keywords"    content="MPs, Members" />
+    <meta name="author"      content="Charlie Harvey" />
+    <meta name="description" content="Generate a realtime MP spreadsheet" />
+    <meta name="generator"   content="vim" />
+    <title>Realtime MP spreadsheet using YQL and Javascript</title>
+    <!--zepto is like jquery but smaller-->
+    <script src="http://static.charlieharvey.org.uk/js/zepto.min.js"></script>
+</head>
+
+<body>
+  <h1>Realtime MP spreadsheet using YQL and Javascript</h1>
+  <script>
+    // Fetch with YQL as JSON as it is a bit more pleasant to work with
+    yql = "https://query.yahooapis.com/v1/public/yql?q=select%20Member%20from%20xml%20where%20url%20=%20%27http://data.parliament.uk/membersdataplatform/services/mnis/members/query/House=Commons/Addresses/%27&format=json";
+    $.ajax({ type: 'GET'
+           , url: yql
+           , dataType: 'jsonp'
+           , success: function(data, textStatus) {
+                if(null==data.query.results) {
+                alert("Couldn't retrieve anything try again in a bit?");
+                return;
+              }
+              memberCSV = asCSVDataURI(data.query.results);
+              addAndClick(memberCSV, "mps");
+            }
+          , failure: function(status,err){ alert("Problems running query" + err); }
+          , complete: function() { }
+    });
+
+    // Given a results object, extract the members from it and
+    // build a CSV from their deets and return it as a data URL
+    function asCSVDataURI (m) {
+      var maxAddresses = 4;
+      var members = m.Members;
+      var addrTitles = makeAddressTitles(maxAddresses);
+      var titles = "Member_Id,Dods_Id,Pims_Id,DisplayAs,ListAs,FullTitle,LayingMinisterName,DateOfBirth,DateOfDeath,Gender,Party,House,MemberFrom,HouseStartDate,HouseEndDate,CurrentStatus_Id,CurrentStatus_IsActive,CurrentStatus_Name,CurrentStatus_Reason,CurrentStatus_StartDate";
+      var csv = titles + addrTitles + "\n";
+      for (i=0;i<members.length;i++) {
+        member = members[i].Member;
+        csv += member.Member_Id
+             + ","
+             + member.Dods_Id
+             + ","
+             + member.Pims_Id
+             + ","
+             + formatWithQuotes(member.DisplayAs)
+             + ","
+             + formatWithQuotes(member.ListAs)
+             + ","
+             + formatWithQuotes(member.FullTitle)
+             + ","
+             + formatNull(member.LayingMinisterName)
+             + ","
+             + extractDate(member.DateOfBirth)
+             + ","
+             + extractDate(member.DateOfDeath)
+             + ","
+             + member.Gender
+             + ","
+             + member.Party.content
+             + ","
+             + member.House
+             + ","
+             + formatWithQuotes(member.MemberFrom)
+             + ","
+             + extractDate(member.HouseStartDate)
+             + ","
+             + extractDate(member.HouseEndDate)
+             + ","
+             + member.CurrentStatus.Id
+             + ","
+             + member.CurrentStatus.IsActive
+             + ","
+             + member.CurrentStatus.Name
+             + ","
+             + formatNull(member.CurrentStatus.Reason)
+             + ","
+             + extractDate(member.CurrentStatus.StartDate)
+             + makeAddresses(member, maxAddresses)
+             + "\n"
+        ;
+      }
+      //console.log(csv);
+      var uri = 'data:text/csv;charset=utf-8,' + escape(csv);
+      return uri;
+    }
+
+    // Makes address columns for the first n member addresses
+    function makeAddresses (member, n) {
+      as = "";
+      for (var i = 0; i<n; i++) {
+        if(member.Addresses.Address[i]) {
+          as += "," + member.Addresses.Address[i].Type_Id     +
+                "," + member.Addresses.Address[i].Type        +
+                "," + member.Addresses.Address[i].IsPreferred +
+                "," + member.Addresses.Address[i].IsPhysical  +
+                "," + formatWithQuotes(member.Addresses.Address[i].Note)     +
+                "," + formatWithQuotes(member.Addresses.Address[i].Address1) +
+                "," + formatWithQuotes(member.Addresses.Address[i].Address2) +
+                "," + formatWithQuotes(member.Addresses.Address[i].Address3) +
+                "," + formatWithQuotes(member.Addresses.Address[i].Address4) +
+                "," + formatWithQuotes(member.Addresses.Address[i].Address5) +
+                "," + formatWithQuotes(member.Addresses.Address[i].Postcode)       +
+                "," + formatWithQuotes(member.Addresses.Address[i].Phone)          +
+                "," + formatWithQuotes(member.Addresses.Address[i].Fax)            +
+                "," + formatWithQuotes(member.Addresses.Address[i].Email)
+          ;
+        }
+        else {
+          as += ", , , , , , , , , , , , , , ";
+        }
+      }
+      return as;
+    }
+
+    // Makes n address title columns
+    function makeAddressTitles (n) {
+      as = "";
+      for (var i = 0; i<n; i++) {
+        var j = i+1;
+        as += ',Address' + j + '_Type_Id'     +
+              ',Address' + j + '_Type'        +
+              ',Address' + j + '_IsPreferred' +
+              ',Address' + j + '_IsPhysical'  +
+              ',Address' + j + '_Note'        +
+              ',Address' + j + '_Address1'    +
+              ',Address' + j + '_Address2'    +
+              ',Address' + j + '_Address3'    +
+              ',Address' + j + '_Address4'    +
+              ',Address' + j + '_Address5'    +
+              ',Address' + j + '_Postcode'    +
+              ',Address' + j + '_Phone'       +
+              ',Address' + j + '_Fax'         +
+              ',Address' + j + '_Email'
+        ;
+      }
+      return as;
+    }
+
+    // Given a date from the parliament api return eiter the date if a string 
+    // or empty string if an object (which is how null is represented)
+    function extractDate (d) {
+      return null !== d && "object" === typeof(d) ? '' : d
+    }
+
+    // Given a string, if the string is null then return '' otherwise return the string
+    function formatNull (s) {
+      return s === null || typeof(s) === 'undefined' ? '' : s;
+    }
+
+    // Given a string, wrap in quotes
+    function formatWithQuotes(s) {
+      return '"' + formatNull(s) + '"';
+    }
+
+    // Given a dataURL, and a filename add an hidden link to the page, and
+    // click it -- effectively make a download start happening.
+    // Might reconsider this and have a fuckoff big button that goes green and
+    // gets enabled instead.
+    function addAndClick(uri,filename) {
+      var link = document.createElement("a");
+      link.href = uri;
+      link.style = "visibility:hidden";
+      link.download = filename + ".csv";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  </script>
+</body>
+</html>
